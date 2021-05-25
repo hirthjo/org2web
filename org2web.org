@@ -1,0 +1,88 @@
+* Org2Web
+Exports all org files in ~SOURCE~ and its subdirectories to ~TARGET~
+as HTML with the same directory structure. The outputted files include
+the header specified by ~org-index-header~.
+
+In each directory an ~index.html~ file is created linking all other
+org files under a /Topics/ heading and all subdirectories under a /Sub
+Topics/ heading.
+
+The exporter can be run by executing the shell code.
+
+** Emacs Lisp Code
+*** Header
+#+BEGIN_SRC emacs-lisp
+(defvar org-index-header
+"\#+HTML_HEAD: <link rel=\"stylesheet\" type=\"text/css\" href=\"https://gongzhitaao.org/orgcss/org.css\"/>
+\#+OPTIONS: toc:nil
+
+")
+
+(defun org-index-description (d)
+  (if (file-exists-p (concat (expand-file-name d) "/about.org"))
+    (with-temp-buffer
+      (insert-file-contents (concat (expand-file-name d) "/about.org"))
+      (buffer-string))
+    (concat "* " (first (last (split-string (expand-file-name d) "/"))))))
+
+(defvar org-index-files-header
+  (concat"
+" "** Topics
+"))
+
+(defvar org-index-dirs-header
+  (concat"
+" "** Sub Topics
+"))
+#+END_SRC
+*** Export Index File
+#+BEGIN_SRC emacs-lisp
+(defun org-create-index-file ()
+ (interactive)
+ (let ((root ".")
+      (abspath nil)
+      (match nil)
+      (nosort t))
+      (let ((content (remove "." 
+                  (remove ".." 
+                          (directory-files root abspath match nosort)))))
+      (let ((files (seq-filter 
+                 (lambda (x) (file-directory-p (expand-file-name x root)))
+                  content))
+      (dirs  (seq-filter 
+                 (lambda (x) (file-regular-p (expand-file-name x root)))
+                  content)))
+                  (let ((file-template (mapconcat 'create-file-template files ""))
+                       (dir-template (mapconcat 'create-dir-template dirs "")))
+                    (write-region 
+                       (concat org-index-header (org-index-description ".")
+                       org-index-dirs-header dir-template 
+                       org-index-files-header file-template)
+                       nil "index.org"))))))
+#+END_SRC
+** Shell Script Exporter
+#+BEGIN_SRC sh
+SOURCE=/home/git/orglife/org-content/
+TARGET=/home/git/orglife/export_html
+
+for d in $(find $SOURCE -type d);
+do
+  echo "created index file for: " $d
+  echo " "
+  cd $d
+  emacsclient -e '(progn (org-create-index-file))'
+done
+
+cd ${SOURCE}
+for f in $(find $SOURCE -name '*.org');
+do
+  echo "exported: "${f}
+  fdir=$TARGET/${f#${SOURCE}}
+  echo "to: "
+  emacsclient -e  '(progn (find-file "'${f}'") 
+                           (global-auto-revert-mode t)
+                           (setq html-export-dir "'${fdir%/*}'")
+                           (org-html-export-to-html))'   
+  echo " "
+done
+#+END_SRC
